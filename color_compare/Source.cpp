@@ -1,14 +1,47 @@
 #include "opencv2/opencv.hpp"
 #include "iostream"
+#include <fstream>
+#include <vector>
 #include <chrono>
+#include <string>
 #define PI 3.14159265358979323846
 
+
+class indicator {
+public:
+    std::string name;
+    cv::Vec3b color;
+};
+
+std::vector<indicator> Ind;
+
+void load_indicator(const std::string& input_file_name,std::vector<indicator>& Ind) {
+    std::ifstream input_file(input_file_name);
+    while (!input_file.eof()) {
+        indicator _Ind;
+        std::getline(input_file, _Ind.name);
+        input_file >> _Ind.color[0] >> _Ind.color[1] >> _Ind.color[2];
+        Ind.push_back(_Ind);
+    }
+}
+
+void put_indicator(const std::string& output_file_name, std::vector<indicator>& Ind) {
+    std::ofstream output_file(output_file_name);
+    for (int i = 0; i < Ind.size(); i++) {
+        output_file << Ind[i].name << "\n";
+        output_file << Ind[i].color[0] << " " << Ind[i].color[1] << " " << Ind[i].color[2] << "\n";
+    }
+}
+
+
+
 double get_distance(const cv::Vec3b& p1,const cv::Vec3b& p2) { // LAB color space
+
     const double KL = 1;
     const double KC = 1;
     const double KH = 1;
 
-    auto get_LCh = [](const cv::Vec3b& p) {
+    auto get_LCh = [](cv::Vec3b p) {
         cv::Vec3b result;
         result[0] = p[0]; // L
         result[1] = std::sqrt(std::pow(p[1], 2) + std::pow(p[2], 2));// C
@@ -69,6 +102,64 @@ double get_distance(const cv::Vec3b& p1,const cv::Vec3b& p2) { // LAB color spac
     return result;
 }
 
+inline void invert_color(cv::Vec3b& point) {
+    point[0] = 255 - point[0];
+    point[1] = 255 - point[1];
+    point[2] = 255 - point[2];
+}
+
+void draw_capture_box(cv::Mat& image) {
+    const int row = image.rows;
+    const int col = image.cols;
+
+    int midx = col / 2;
+    int midy = row / 2;
+    int edge_size = ((row + col) / 2) / 4;
+
+    int left = midx - edge_size / 2;
+    int right = midx + edge_size / 2;
+    int top = midy + edge_size / 2;
+    int bottom = midy - edge_size / 2;
+    for (int q = left; q <= right; q++) {
+        invert_color(image.at<cv::Vec3b>(top, q));
+        invert_color(image.at<cv::Vec3b>(bottom, q));
+    }
+    for (int q = bottom; q <= top; q++) {
+        invert_color(image.at<cv::Vec3b>(q, left));
+        invert_color(image.at<cv::Vec3b>(q, right));
+    }
+}
+
+cv::Vec3b get_color_capture_box(cv::Mat& image) {
+    const int row = image.rows;
+    const int col = image.cols;
+
+    int midx = col / 2;
+    int midy = row / 2;
+    int edge_size = ((row + col) / 2) / 4;
+
+    int left = midx - edge_size / 2;
+    int right = midx + edge_size / 2;
+    int top = midy + edge_size / 2;
+    int bottom = midy - edge_size / 2;
+
+    double get_color[3] = {128,0,0};
+    int pixel_count = 0;
+    for (int q = left; q <= right; q++) {
+        for (int w = bottom; w <= top; w++) {
+            get_color[0] += image.at<cv::Vec3b>(q, w)[0];
+            get_color[1] += image.at<cv::Vec3b>(q, w)[1];
+            get_color[2] += image.at<cv::Vec3b>(q, w)[2];
+            ++pixel_count;
+        }
+    }
+    cv::Vec3b return_color;
+    return_color[0] = get_color[0] / pixel_count;
+    return_color[1] = get_color[1] / pixel_count;
+    return_color[2] = get_color[2] / pixel_count;
+    return return_color;
+}
+
 int main(int, char**) {
     cv::VideoCapture camera(0);
     if (!camera.isOpened()) {
@@ -77,22 +168,32 @@ int main(int, char**) {
     }
 
     cv::namedWindow("Webcam", 1080);
+    cv::namedWindow("color_func", 1080);
     cv::Mat frame;
 
     
 
     while (1) {
         camera >> frame;
-        cv::cvtColor(frame, frame, cv::COLOR_BGR2);
-        for (int q = 0; q < frame.rows; q++) {
-            for (int w = 0; w < frame.cols; w++) {
-                cv::Vec3b p = frame.at<cv::Vec3b>(q, w);
-                p[0] -= p[0]%40;
-                frame.at<cv::Vec3b>(q, w) = p;
+        cv::Mat cal;
+        cv::Mat output = frame;
+        cv::cvtColor(frame, cal, cv::COLOR_BGR2Lab);
+        for (int q = 0; q < frame.rows - 5; q++) {
+            for (int w = 0; w < frame.cols - 5; w++) {
+                if (get_distance(cal.at<cv::Vec3b>(q, w), cal.at<cv::Vec3b>(q + 5, w + 5)) > 12)
+                    output.at<cv::Vec3b>(q, w) = { 255,255,255 };
             }
         }
-        cv::cvtColor(frame, frame, cv::COLOR_HSV2BGR);
-        cv::imshow("Webcam", frame);
+        draw_capture_box(output);
+        cv::Vec3b get_color = get_color_capture_box(output);
+        cv::imshow("Webcam", output);
+        cv::Mat color = frame;
+        for (int q = 0; q < color.rows; q++) {
+            for (int w = 0; w < color.cols; w++) {
+                color.at<cv::Vec3b>(q, w) = get_color;
+            }
+        }
+        cv::imshow("color_func", color);
         if (cv::waitKey(10) >= 0)
             break;
     }

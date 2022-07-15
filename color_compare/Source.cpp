@@ -3,9 +3,12 @@
 #include <fstream>
 #include <vector>
 #include <chrono>
+#include <thread>
 #include <string>
 #define PI 3.14159265358979323846
 
+cv::VideoCapture camera(0);
+cv::Mat frame;
 
 class indicator {
 public:
@@ -160,42 +163,57 @@ cv::Vec3b get_color_capture_box(cv::Mat& image) {
     return return_color;
 }
 
+bool is_prefix(const std::string& comparator,const std::string& str,int& pointer) {
+    int _pointer = pointer;
+    for (int i = 0; i < comparator.size(); i++) {
+        if (str[_pointer] != comparator[i])
+            return false;
+        ++_pointer;
+    }
+    pointer = _pointer;
+    return true;
+}
+
+void execute_command(const std::string& str) {
+    int pointer = 0;
+    if (is_prefix("capture ", str, pointer)) {
+        Ind.push_back({ "color123",get_color_capture_box(frame) });
+    }
+}
+
+void show() {
+    if (!camera.isOpened()) {
+        std::cout << "asdfasdfasdfasdf\n\n\n\n\n\n\n\n\n";
+    }
+    camera >> frame;
+    draw_capture_box(frame);
+    cv::imshow("Webcam", frame);
+
+    cv::Mat output_color = frame;
+    cv::Vec3b get_color = get_color_capture_box(frame);
+    for (int i = 0; i < output_color.rows; i++) {
+        for (int j = 0; j < output_color.cols; j++) {
+            output_color.at<cv::Vec3b>(i, j) = get_color;
+        }
+    }
+    cv::imshow("Color_captured", output_color);
+
+}
+
 int main(int, char**) {
     cv::VideoCapture camera(0);
-    if (!camera.isOpened()) {
-        std::cerr << "ERROR: Could not open camera" << std::endl;
-        return 1;
-    }
-
     cv::namedWindow("Webcam", 1080);
-    cv::namedWindow("color_func", 1080);
-    cv::Mat frame;
+    cv::namedWindow("Color_captured", 1080);
 
+    camera >> frame;
+    cv::imshow("Wdsfadsf", frame);
+    show();
     
-
-    while (1) {
-        camera >> frame;
-        cv::Mat cal;
-        cv::Mat output = frame;
-        cv::cvtColor(frame, cal, cv::COLOR_BGR2Lab);
-        for (int q = 0; q < frame.rows - 5; q++) {
-            for (int w = 0; w < frame.cols - 5; w++) {
-                if (get_distance(cal.at<cv::Vec3b>(q, w), cal.at<cv::Vec3b>(q + 5, w + 5)) > 12)
-                    output.at<cv::Vec3b>(q, w) = { 255,255,255 };
-            }
-        }
-        draw_capture_box(output);
-        cv::Vec3b get_color = get_color_capture_box(output);
-        cv::imshow("Webcam", output);
-        cv::Mat color = frame;
-        for (int q = 0; q < color.rows; q++) {
-            for (int w = 0; w < color.cols; w++) {
-                color.at<cv::Vec3b>(q, w) = get_color;
-            }
-        }
-        cv::imshow("color_func", color);
-        if (cv::waitKey(10) >= 0)
-            break;
+    while (true) {
+        std::string command;
+        std::getline(std::cin, command);
+        execute_command(command);
     }
+
     return 0;
 }

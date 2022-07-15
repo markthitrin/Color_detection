@@ -2,11 +2,12 @@
 #include "iostream"
 #include <fstream>
 #include <vector>
-#include <chrono>
 #include <thread>
+#include <chrono>
 #include <string>
 #define PI 3.14159265358979323846
 
+bool get_command_terminate = true;
 cv::VideoCapture camera(0);
 cv::Mat frame;
 
@@ -32,7 +33,7 @@ void put_indicator(const std::string& output_file_name, std::vector<indicator>& 
     std::ofstream output_file(output_file_name);
     for (int i = 0; i < Ind.size(); i++) {
         output_file << Ind[i].name << "\n";
-        output_file << Ind[i].color[0] << " " << Ind[i].color[1] << " " << Ind[i].color[2] << "\n";
+        output_file << int(Ind[i].color[0]) << " " << int(Ind[i].color[1]) << " " << int(Ind[i].color[2]) << "\n";
     }
 }
 
@@ -163,56 +164,75 @@ cv::Vec3b get_color_capture_box(cv::Mat& image) {
     return return_color;
 }
 
-bool is_prefix(const std::string& comparator,const std::string& str,int& pointer) {
+bool is_command(const std::string& comparator,const std::string& str,int& pointer) {
     int _pointer = pointer;
+    if (str.size() - pointer < comparator.size())
+        return false;
     for (int i = 0; i < comparator.size(); i++) {
         if (str[_pointer] != comparator[i])
             return false;
         ++_pointer;
     }
-    pointer = _pointer;
+    if (_pointer < str.size() && str[_pointer] != ' ')
+        return false;
+    pointer = _pointer + 1;
     return true;
 }
 
 void execute_command(const std::string& str) {
     int pointer = 0;
-    if (is_prefix("capture ", str, pointer)) {
+    if (is_command("capture", str, pointer)) {
         Ind.push_back({ "color123",get_color_capture_box(frame) });
+        std::cout << "the color has success fully captured\n";
+    }
+    else if (is_command("save", str, pointer)) {
+        put_indicator("indecator.txt",Ind);
+        std::cout << "the indecator vector has successfully saved\n";
+    }
+    else {
+        std::cout << "unknown command\n";
+    }
+}
+
+void get_command() {
+    get_command_terminate = true;
+    while (get_command_terminate) {
+        std::string command;
+        std::getline(std::cin, command);
+        execute_command(command);
     }
 }
 
 void show() {
+
     if (!camera.isOpened()) {
         std::cout << "asdfasdfasdfasdf\n\n\n\n\n\n\n\n\n";
     }
+    
     camera >> frame;
     draw_capture_box(frame);
     cv::imshow("Webcam", frame);
-
+    
     cv::Mat output_color = frame;
     cv::Vec3b get_color = get_color_capture_box(frame);
     for (int i = 0; i < output_color.rows; i++) {
         for (int j = 0; j < output_color.cols; j++) {
             output_color.at<cv::Vec3b>(i, j) = get_color;
-        }
+         }
     }
     cv::imshow("Color_captured", output_color);
-
+    cv::waitKey(1);
 }
 
 int main(int, char**) {
-    cv::VideoCapture camera(0);
+
     cv::namedWindow("Webcam", 1080);
     cv::namedWindow("Color_captured", 1080);
-
-    camera >> frame;
-    cv::imshow("Wdsfadsf", frame);
-    show();
     
+    std::thread get_command_thread(get_command);
+
     while (true) {
-        std::string command;
-        std::getline(std::cin, command);
-        execute_command(command);
+        show();
     }
 
     return 0;

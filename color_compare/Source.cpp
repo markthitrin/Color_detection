@@ -24,7 +24,13 @@ void load_indicator(const std::string& input_file_name,std::vector<indicator>& I
     while (!input_file.eof()) {
         indicator _Ind;
         std::getline(input_file, _Ind.name);
-        input_file >> _Ind.color[0] >> _Ind.color[1] >> _Ind.color[2];
+        int B, G, R;
+        input_file >> B >> G >> R;
+        _Ind.color[0] = B;
+        _Ind.color[1] = G;
+        _Ind.color[2] = R;
+        std::string get_;
+        std::getline(input_file, get_);
         Ind.push_back(_Ind);
     }
 }
@@ -213,7 +219,8 @@ void show() {
     draw_capture_box(frame);
     cv::imshow("Webcam", frame);
     
-    cv::Mat output_color = frame;
+    cv::Mat output_color;
+    camera >> output_color;
     cv::Vec3b get_color = get_color_capture_box(frame);
     for (int i = 0; i < output_color.rows; i++) {
         for (int j = 0; j < output_color.cols; j++) {
@@ -222,12 +229,31 @@ void show() {
     }
     cv::imshow("Color_captured", output_color);
     cv::waitKey(1);
+
+    cv::Mat color_frame;
+    camera >> color_frame;
+    for (int i = 0; i < color_frame.rows; i++) {
+        for (int j = 0; j < color_frame.cols; j++) {
+            double min = 100000000;
+            cv::Vec3b min_color;
+            for (int k = 0; k < Ind.size(); k++) {
+                double distance = get_distance(Ind[k].color, color_frame.at<cv::Vec3b>(i, j));
+                if (distance < min) {
+                    min = distance;
+                    min_color = Ind[k].color;
+                }
+            }
+            color_frame.at<cv::Vec3b>(i, j) = min_color;
+        }
+    }
+    cv::imshow("Color close", color_frame);
 }
 
 int main(int, char**) {
-
+    load_indicator("indecator.txt",Ind);
     cv::namedWindow("Webcam", 1080);
     cv::namedWindow("Color_captured", 1080);
+    cv::namedWindow("Color close", 1080);
     
     std::thread get_command_thread(get_command);
 

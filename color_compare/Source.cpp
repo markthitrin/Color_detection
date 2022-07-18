@@ -10,6 +10,14 @@
 bool get_command_terminate = true;
 cv::VideoCapture camera(0);
 cv::Mat frame;
+cv::Mat get_camera;
+cv::Mat get_color_capture;
+cv::Mat get_color_detected;
+
+int waiting_count = 0;
+bool show_camera_wait = true;
+bool show_color_capture_wait = true;
+bool show_color_detected_wait = true;
 
 class indicator {
 public:
@@ -185,6 +193,10 @@ bool is_command(const std::string& comparator,const std::string& str,int& pointe
     return true;
 }
 
+void get_frame() {
+    camera >> frame;
+}
+
 void execute_command(const std::string& str) {
     int pointer = 0;
     if (is_command("capture", str, pointer)) {
@@ -209,44 +221,76 @@ void get_command() {
     }
 }
 
-void show() {
+void show_camera() {
+    while (true) {
+        waiting_count++;
+        cv::Mat get_frame = frame.clone();
+        waiting_count--;
 
-    if (!camera.isOpened()) {
-        std::cout << "asdfasdfasdfasdf\n\n\n\n\n\n\n\n\n";
-    }
-    
-    camera >> frame;
-    draw_capture_box(frame);
-    cv::imshow("Webcam", frame);
-    
-    cv::Mat output_color;
-    camera >> output_color;
-    cv::Vec3b get_color = get_color_capture_box(frame);
-    for (int i = 0; i < output_color.rows; i++) {
-        for (int j = 0; j < output_color.cols; j++) {
-            output_color.at<cv::Vec3b>(i, j) = get_color;
-         }
-    }
-    cv::imshow("Color_captured", output_color);
-    cv::waitKey(1);
+        if (get_frame.rows == 0)
+            continue;
+        draw_capture_box(get_frame);
+        while (!show_camera_wait) {
 
-    cv::Mat color_frame;
-    camera >> color_frame;
-    for (int i = 0; i < color_frame.rows; i++) {
-        for (int j = 0; j < color_frame.cols; j++) {
-            double min = 100000000;
-            cv::Vec3b min_color;
-            for (int k = 0; k < Ind.size(); k++) {
-                double distance = get_distance(Ind[k].color, color_frame.at<cv::Vec3b>(i, j));
-                if (distance < min) {
-                    min = distance;
-                    min_color = Ind[k].color;
-                }
-            }
-            color_frame.at<cv::Vec3b>(i, j) = min_color;
         }
+        get_camera = get_frame;
+        show_camera_wait = false;
+        cv::waitKey(1);
     }
-    cv::imshow("Color close", color_frame);
+}
+
+void show_capture_color() {
+    while (true) {
+        waiting_count++;
+        cv::Mat output_color = frame.clone();
+        waiting_count--;
+
+        if (output_color.rows == 0)
+            continue;
+        cv::Vec3b get_color = get_color_capture_box(output_color);
+        for (int i = 0; i < output_color.rows; i++) {
+            for (int j = 0; j < output_color.cols; j++) {
+                output_color.at<cv::Vec3b>(i, j) = get_color;
+            }
+        }
+        while (!show_color_capture_wait) {
+
+        }
+        get_color_capture = output_color;
+        show_color_capture_wait = false;
+        cv::waitKey(1);
+    }
+}
+
+void show_color_detected() {
+    while (true) {
+        waiting_count++;
+        cv::Mat color_frame = frame.clone();
+        waiting_count--;
+
+        if (color_frame.rows == 0)
+            continue;
+        for (int i = 0; i < color_frame.rows; i++) {
+            for (int j = 0; j < color_frame.cols; j++) {
+                double min = 100000000;
+                cv::Vec3b min_color;
+                for (int k = 0; k < Ind.size(); k++) {
+                    double distance = get_distance(Ind[k].color, color_frame.at<cv::Vec3b>(i, j));
+                    if (distance < min) {
+                        min = distance;
+                        min_color = Ind[k].color;
+                    }
+                }
+                color_frame.at<cv::Vec3b>(i, j) = min_color;
+            }
+        }
+        while (!show_color_detected_wait) {
+
+        }
+        get_color_detected = color_frame;
+        show_color_detected_wait = false;
+        cv::waitKey(1);
+    }
 }
 
 int main(int, char**) {
@@ -254,12 +298,34 @@ int main(int, char**) {
     cv::namedWindow("Webcam", 1080);
     cv::namedWindow("Color_captured", 1080);
     cv::namedWindow("Color close", 1080);
-    
+
     std::thread get_command_thread(get_command);
+    std::thread show1(show_camera);
+    std::thread show2(show_capture_color);
+    std::thread show3(show_color_detected);
+
 
     while (true) {
-        show();
-    }
+        try {
+            if (waiting_count == 0)
+                get_frame();
+            if (get_camera.rows != 0 && !show_camera_wait) {
+                imshow("Webcam", get_camera);
+                show_camera_wait = true;
+            }
+            if (get_color_capture.rows != 0 && !show_color_capture_wait) {
+                imshow("Color_captured", get_color_capture);
+                show_color_capture_wait = true;
+            }
+            if (get_color_detected.rows != 0 && !show_color_detected_wait) {
+                imshow("Color close", get_color_detected);
+                show_color_detected_wait = true;
+            }
+            cv::waitKey(1);
+        }
+        catch (int error) {
 
+        }
+    }
     return 0;
 }

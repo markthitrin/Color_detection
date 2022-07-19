@@ -5,19 +5,22 @@
 #include <thread>
 #include <chrono>
 #include <string>
+#include <atomic>
 #define PI 3.14159265358979323846
 
 bool get_command_terminate = true;
 cv::VideoCapture camera(0);
 cv::Mat frame;
+cv::Mat pure_frame;
 cv::Mat get_camera;
 cv::Mat get_color_capture;
 cv::Mat get_color_detected;
 
-int waiting_count = 0;
+std::atomic<int> waiting_count = 0;
 bool show_camera_wait = true;
 bool show_color_capture_wait = true;
 bool show_color_detected_wait = true;
+int tuner[3] = {0,0,0};
 
 class indicator {
 public:
@@ -26,6 +29,7 @@ public:
 };
 
 std::vector<indicator> Ind;
+std::vector<indicator> color_base;
 
 void load_indicator(const std::string& input_file_name,std::vector<indicator>& Ind) {
     std::ifstream input_file(input_file_name);
@@ -126,6 +130,45 @@ inline void invert_color(cv::Vec3b& point) {
     point[2] = 255 - point[2];
 }
 
+void flip_image(cv::Mat& image) {
+    for (int i = 0; i < image.rows; i++) {
+        for (int j = 0; j < image.cols / 2; j++) {
+            std::swap(image.at<cv::Vec3b>(i, j), image.at<cv::Vec3b>(i,image.cols - j - 1));
+        }
+    }
+}
+
+void draw_capture_box0(cv::Mat& image) {
+    const int row = image.rows;
+    const int col = image.cols;
+
+    int midx = col / 2;
+    int midy = row / 2;
+    int edge_size = ((row + col) / 2) / 2;
+
+    int left = midx - edge_size / 2 * 6 / 4;
+    int right = midx + edge_size / 2 * 6 / 4; 
+    int top = midy + edge_size / 2;
+    int bottom = midy - edge_size / 2;
+    for (int q = left; q <= right; q++) {
+        invert_color(image.at<cv::Vec3b>(top, q));
+        invert_color(image.at<cv::Vec3b>(bottom, q));
+    }
+    for (int q = bottom; q <= top; q++) {
+        invert_color(image.at<cv::Vec3b>(q, left));
+        invert_color(image.at<cv::Vec3b>(q, right));
+    }
+
+    int segment = edge_size / 4;
+    for (int i = bottom + segment / 2; i < top; i += segment) {
+        for (int j = right - segment / 2; j > left; j -= segment) {
+            image.at<cv::Vec3b>(i, j) = {0,255,0};
+            if (i == bottom + segment / 2 && j == right - segment / 2)
+                image.at<cv::Vec3b>(i, j) = { 255,255,255 };
+        }
+    }
+}
+
 void draw_capture_box(cv::Mat& image) {
     const int row = image.rows;
     const int col = image.cols;
@@ -146,6 +189,29 @@ void draw_capture_box(cv::Mat& image) {
         invert_color(image.at<cv::Vec3b>(q, left));
         invert_color(image.at<cv::Vec3b>(q, right));
     }
+}
+
+std::vector<cv::Vec3b> get_color_calibrator(cv::Mat& image) {
+    std::vector<cv::Vec3b> result;
+    const int row = image.rows;
+    const int col = image.cols;
+
+    int midx = col / 2;
+    int midy = row / 2;
+    int edge_size = ((row + col) / 2) / 2;
+
+    int left = midx - edge_size / 2 * 6 / 4;
+    int right = midx + edge_size / 2 * 6 / 4;
+    int top = midy + edge_size / 2;
+    int bottom = midy - edge_size / 2;
+
+    int segment = edge_size / 4;
+    for (int i = bottom + segment / 2; i < top; i += segment) {
+        for (int j = left + segment / 2; j < right; j += segment) {
+            result.push_back(image.at<cv::Vec3b>(i, j));
+        }
+    }
+    return result;
 }
 
 cv::Vec3b get_color_capture_box(cv::Mat& image) {
@@ -193,8 +259,27 @@ bool is_command(const std::string& comparator,const std::string& str,int& pointe
     return true;
 }
 
+void filter_image(cv::Mat& image) {
+    for (int i = 0; i < image.rows; i++) {
+        for (int j = 0; j < image.cols; j++) {
+            for (int k = 0; k < 3; k++) {
+                int a = image.at<cv::Vec3b>(i, j)[k];
+                a += tuner[k];
+                if (a < 0) a = 0;
+                if (a > 255)a = 255;
+                image.at<cv::Vec3b>(i, j)[k] = a;
+            }
+        }
+    }
+}
+
 void get_frame() {
-    camera >> frame;
+    cv::Mat _frame;
+    camera >> _frame;
+    camera >> pure_frame;
+    flip_image(_frame);
+    filter_image(_frame);
+    frame = _frame.clone();
 }
 
 void execute_command(const std::string& str) {
@@ -206,6 +291,23 @@ void execute_command(const std::string& str) {
     else if (is_command("save", str, pointer)) {
         put_indicator("indecator.txt",Ind);
         std::cout << "the indecator vector has successfully saved\n";
+    }
+    else if (is_command("tune", str, pointer)) {
+        std::vector<cv::Vec3b> get_color = get_color_calibrator(pure_frame);
+        int b = 0, g = 0, r = 0;
+        for (int i = 0; i < get_color.size(); i++) {
+            b += color_base[i].color[0] - get_color[i][0];
+            g += color_base[i].color[1] - get_color[i][1];
+            r += color_base[i].color[2] - get_color[i][2];
+            std::cout << color_base[i].color[0] - get_color[i][0] << " " << color_base[i].color[1] - get_color[i][1] << " " << color_base[i].color[2] - get_color[i][2] << std::endl;
+        }
+        b /= (int)get_color.size();
+        g /= (int)get_color.size();
+        r /= (int)get_color.size();
+        tuner[0] = b;
+        tuner[1] = g;
+        tuner[2] = r;
+        std::cout << b << ' ' << g << " " << r << std::endl;
     }
     else {
         std::cout << "unknown command\n";
@@ -230,6 +332,7 @@ void show_camera() {
         if (get_frame.rows == 0)
             continue;
         draw_capture_box(get_frame);
+        draw_capture_box0(get_frame);
         while (!show_camera_wait) {
 
         }
@@ -270,8 +373,8 @@ void show_color_detected() {
 
         if (color_frame.rows == 0)
             continue;
-        for (int i = 0; i < color_frame.rows; i++) {
-            for (int j = 0; j < color_frame.cols; j++) {
+        for (int i = 0; i < color_frame.rows; i+=2) {
+            for (int j = 0; j < color_frame.cols; j+=2) {
                 double min = 100000000;
                 cv::Vec3b min_color;
                 for (int k = 0; k < Ind.size(); k++) {
@@ -281,7 +384,9 @@ void show_color_detected() {
                         min_color = Ind[k].color;
                     }
                 }
-                color_frame.at<cv::Vec3b>(i, j) = min_color;
+                for (int k = 0; k < 2; k++) 
+                    for(int w = 0; w < 2; w++)
+                        color_frame.at<cv::Vec3b>(i + k, j + w) = min_color;
             }
         }
         while (!show_color_detected_wait) {
@@ -293,8 +398,10 @@ void show_color_detected() {
     }
 }
 
+
 int main(int, char**) {
     load_indicator("indecator.txt",Ind);
+    load_indicator("color_calibrator.txt", color_base);
     cv::namedWindow("Webcam", 1080);
     cv::namedWindow("Color_captured", 1080);
     cv::namedWindow("Color close", 1080);

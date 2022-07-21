@@ -36,7 +36,7 @@ void load_indicator(const std::string& input_file_name,std::vector<indicator>& I
     while (!input_file.eof()) {
         indicator _Ind;
         std::getline(input_file, _Ind.name);
-        int B, G, R;
+        double B, G, R;
         input_file >> B >> G >> R;
         _Ind.color[0] = B;
         _Ind.color[1] = G;
@@ -55,74 +55,112 @@ void put_indicator(const std::string& output_file_name, std::vector<indicator>& 
     }
 }
 
-
-
-double get_distance(const cv::Vec3b& p1,const cv::Vec3b& p2) { // LAB color space
-
-    const double KL = 1;
-    const double KC = 1;
-    const double KH = 1;
-
-    auto get_LCh = [](cv::Vec3b p) {
-        cv::Vec3b result;
-        result[0] = p[0]; // L
-        result[1] = std::sqrt(std::pow(p[1], 2) + std::pow(p[2], 2));// C
-        result[2] = std::atan2(p[2], p[1]) * double(180) / PI;
-        return result;
+cv::Vec3b BRG2Lab(cv::Vec3b p) {
+    auto f = [](double x) {
+        return x > 0.008856 ? std::pow(x, 0.33) : 7.787 * x + double(16) / 166;
     };
 
-    cv::Vec3b p1LCh = get_LCh(p1);
-    cv::Vec3b p2LCh = get_LCh(p2);
+    double b = p[0];
+    double g = p[1];
+    double r = p[2];
+    b /= 255;
+    g /= 255;
+    r /= 255;
+    double x = 0.412453 * r + 0.357580 * g + 0.180423 * b;
+    double y = 0.212671 * r + 0.715160 * g + 0.072169 * b;
+    double z = 0.019334 * r + 0.119193 * g + 0.950227 * b;
 
-    double avrC = (p1LCh[1] + p2LCh[2]) / double(2);
-    double G = 0.5 * (double(1) - std::sqrt(std::pow(avrC, 7) / (std::pow(avrC, 7) + std::pow(25, 7))));
+    x = x / 0.950456;
+    z = z / 1.088754;
 
-    double a1_ = (1 + G) * p1[1];
-    double a2_ = (1 + G) * p2[1];
+    double l = y > 0.008856 ? double(116) * std::pow(y, 0.33) - 16 : 903.3 * y;
+    double A = 500 * (f(x) - f(y));
+    double B = 200 * (f(y) - f(z));
 
-    double C1_ = std::sqrt(std::pow(a1_, 2) + std::pow(p1[2], 2));
-    double C2_ = std::sqrt(std::pow(a2_, 2) + std::pow(p2[2], 2));
-
-    double h1_ = (p1[2] == a1_ && a1_ == 0) ? 0 : std::atan2(p1[2], a1_);
-    double h2_ = (p2[2] == a2_ && a2_ == 0) ? 0 : std::atan2(p2[2], a2_);
-
-    double dL = p2[0] - p1[0];
-    double dC = C2_ - C1_;
-    double dh = C1_ * C2_ == 0 ? 0 :
-        std::abs(h2_ - h1_) <= 180 ? h2_ - h1_ :
-        h2_ - h1_ > 180 ? h2_ - h1_ - 360 :
-        h2_ - h1_ + 360;
-
-    double dH = 2 * std::sqrt(C1_ * C2_) * std::sin(dh / 2);
-
-    double avrL = (p1LCh[0] + p2LCh[1]) / 2;
-    double avrC_ = (C1_ + C2_) / 2;
-    double avrh = C1_ * C2_ == 0 ? h1_ + h2_ :
-        std::abs(h1_ - h2_) <= 180 ? (h1_ + h2_) / 2 :
-        h1_ + h2_ < 360 ? (h1_ + h2_ + 360) / 2 :
-        (h1_ + h2_ - 360) / 2;
-
-    double T = double(1)
-        - 0.17 * std::cos(avrh - 30)
-        + 0.24 * std::cos(2 * avrh)
-        + 0.32 * std::cos(3 * avrh + 6)
-        - 0.20 * std::cos(4 * avrh - 63);
-
-    double dangle = 30 * std::exp(-(avrh - 275) / 25);
-    double Rc = 2 * std::sqrt(std::pow(avrC_, 7) / (std::pow(avrC_, 7) + std::pow(25, 7)));
-
-    double SL = double(1) + (0.015) * std::pow(avrL - 50, 2) / std::sqrt(20 + std::pow(avrL - 50, 2));
-    double SC = double(1) + 0.045 * avrC_;
-    double SH = double(1) + 0.015 * avrC_ * T;
-    double RT = -std::sin(2 * dangle * PI / 180) * Rc;
-
-    double result = std::sqrt(
-        std::pow(dL / (KL * SL), 2)
-        + std::pow(dC / (KC * SC), 2)
-        + std::pow(dH / (KH * SH), 2)
-        + RT * (dC / (KC * SC)) * (dH / (KH * SH)));
+    cv::Vec3b result;
+    result[0] = l * double(255) / 100;
+    result[1] = A + 128;
+    result[2] = B + 128;
     return result;
 }
+
+double to_rad(double degree) { return degree / 180 * CV_PI; };
+
+double get_distance(cv::Vec3d lab1, cv::Vec3d lab2, double kL = 1.0, double kC = 1.0, double kH = 1.0) {
+    double delta_L_apo = lab2[0] - lab1[0];
+    double l_bar_apo = (lab1[0] + lab2[0]) / 2.0;
+    double C1 = sqrt(pow(lab1[1], 2) + pow(lab1[2], 2));
+    double C2 = sqrt(pow(lab2[1], 2) + pow(lab2[2], 2));
+    double C_bar = (C1 + C2) / 2.0;
+    double G = sqrt(pow(C_bar, 7) / (pow(C_bar, 7) + pow(25, 7)));
+    double a1_apo = lab1[1] + lab1[1] / 2.0 * (1.0 - G);
+    double a2_apo = lab2[1] + lab2[1] / 2.0 * (1.0 - G);
+    double C1_apo = sqrt(pow(a1_apo, 2) + pow(lab1[2], 2));
+    double C2_apo = sqrt(pow(a2_apo, 2) + pow(lab2[2], 2));
+    double C_bar_apo = (C1_apo + C2_apo) / 2.0;
+    double delta_C_apo = C2_apo - C1_apo;
+    //h1 and h2
+    double h1_apo;
+    if (C1_apo == 0) {
+        h1_apo = 0.0;
+    }
+    else {
+        h1_apo = atan2(lab1[2], a1_apo);
+        if (h1_apo < 0.0) h1_apo += 2. * CV_PI;
+    }
+    double h2_apo;
+    if (C2_apo == 0) {
+        h2_apo = 0.0;
+    }
+    else {
+        h2_apo = atan2(lab2[2], a2_apo);
+        if (h2_apo < 0.0) h2_apo += 2. * CV_PI;
+    }
+    //delta_h_apo
+    double delta_h_apo;
+    if (abs(h2_apo - h1_apo) <= CV_PI)
+    {
+        delta_h_apo = h2_apo - h1_apo;
+    }
+    else if (h2_apo <= h1_apo)
+    {
+        delta_h_apo = h2_apo - h1_apo + 2. * CV_PI;
+    }
+    else
+    {
+        delta_h_apo = h2_apo - h1_apo - 2. * CV_PI;
+    }
+    //H_apo
+    double H_bar_apo;
+    if (C1_apo == 0 || C2_apo == 0) {
+        H_bar_apo = h1_apo + h2_apo;
+    }
+    else if (abs(h1_apo - h2_apo) <= CV_PI) {
+        H_bar_apo = (h1_apo + h2_apo) / 2.0;
+    }
+    else if (h1_apo + h2_apo < 2. * CV_PI) {
+        H_bar_apo = (h1_apo + h2_apo + 2. * CV_PI) / 2.0;
+    }
+    else {
+        H_bar_apo = (h1_apo + h2_apo - 2. * CV_PI) / 2.0;
+    }
+    //delta_H_apo
+    double delta_H_apo = 2.0 * sqrt(C1_apo * C2_apo) * sin(delta_h_apo / 2.0);
+
+
+    //double delta_H;
+
+    //delta_H_apo = 2.0 * sqrt(C1 * C2) * sin(delta_h_apo / 2.0);
+    double T = 1.0 - 0.17 * cos(H_bar_apo - to_rad(30.)) + 0.24 * cos(2.0 * H_bar_apo) + 0.32 * cos(3.0 * H_bar_apo + to_rad(6.0)) - 0.2 * cos(4.0 * H_bar_apo - to_rad(63.0));
+    double sC = 1.0 + 0.045 * C_bar_apo;
+    double sH = 1.0 + 0.015 * C_bar_apo * T;
+    double sL = 1.0 + ((0.015 * pow(l_bar_apo - 50.0, 2.0)) / sqrt(20.0 + pow(l_bar_apo - 50.0, 2.0)));
+    double RT = -2.0 * G * sin(to_rad(60.0) * exp(-pow((H_bar_apo - to_rad(275.0)) / to_rad(25.0), 2.0)));
+    double res = (pow(delta_L_apo / (kL * sL), 2.0) + pow(delta_C_apo / (kC * sC), 2.0) + pow(delta_H_apo / (kH * sH), 2.0) + RT * (delta_C_apo / (kC * sC)) * (delta_H_apo / (kH * sH)));
+    //return  sqrt(res);
+    return res > 0 ? sqrt(res) : 0;
+}
+
 
 inline void invert_color(cv::Vec3b& point) {
     point[0] = 255 - point[0];
@@ -373,6 +411,8 @@ void show_color_detected() {
 
         if (color_frame.rows == 0)
             continue;
+
+        cv::cvtColor(color_frame, color_frame, cv::COLOR_BGR2Lab);
         for (int i = 0; i < color_frame.rows; i+=2) {
             for (int j = 0; j < color_frame.cols; j+=2) {
                 double min = 100000000;
@@ -389,6 +429,7 @@ void show_color_detected() {
                         color_frame.at<cv::Vec3b>(i + k, j + w) = min_color;
             }
         }
+        cv::cvtColor(color_frame, color_frame, cv::COLOR_Lab2BGR);
         while (!show_color_detected_wait) {
 
         }

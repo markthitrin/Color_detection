@@ -1,11 +1,7 @@
-#include "opencv2/opencv.hpp"
-#include "iostream"
-#include <fstream>
-#include <vector>
-#include <thread>
-#include <chrono>
-#include <string>
-#include <atomic>
+#include "Header.h"
+#include "Function.h"
+#include "Variable.h"
+
 #define PI 3.14159265358979323846
 
 bool get_command_terminate = true;
@@ -20,13 +16,7 @@ std::atomic<int> waiting_count = 0;
 bool show_camera_wait = true;
 bool show_color_capture_wait = true;
 bool show_color_detected_wait = true;
-int tuner[3] = {0,0,0};
 
-class indicator {
-public:
-    std::string name;
-    cv::Vec3b color;
-};
 
 std::vector<indicator> Ind;
 std::vector<indicator> color_base;
@@ -246,7 +236,21 @@ std::vector<cv::Vec3b> get_color_calibrator(cv::Mat& image) {
     int segment = edge_size / 4;
     for (int i = bottom + segment / 2; i < top; i += segment) {
         for (int j = left + segment / 2; j < right; j += segment) {
-            result.push_back(image.at<cv::Vec3b>(i, j));
+            double get_color[3] = { 0,0,0 };
+            int pixel_count = 0;
+            for (int k = i - 10; k <= i + 10; k++) {
+                for (int w = j - 10; w <= j + 10; w++) {
+                    get_color[0] += image.at<cv::Vec3b>(k, w)[0];
+                    get_color[1] += image.at<cv::Vec3b>(k, w)[1];
+                    get_color[2] += image.at<cv::Vec3b>(k, w)[2];
+                    ++pixel_count;
+                }
+            }
+            cv::Vec3b return_color;
+            return_color[0] = get_color[0] / pixel_count;
+            return_color[1] = get_color[1] / pixel_count;
+            return_color[2] = get_color[2] / pixel_count;
+            result.push_back(return_color);
         }
     }
     return result;
@@ -265,7 +269,7 @@ cv::Vec3b get_color_capture_box(cv::Mat& image) {
     int top = midy + edge_size / 2;
     int bottom = midy - edge_size / 2;
 
-    double get_color[3] = {128,0,0};
+    double get_color[3] = {0,0,0};
     int pixel_count = 0;
     for (int q = left; q <= right; q++) {
         for (int w = bottom; w <= top; w++) {
@@ -297,26 +301,12 @@ bool is_command(const std::string& comparator,const std::string& str,int& pointe
     return true;
 }
 
-void filter_image(cv::Mat& image) {
-    for (int i = 0; i < image.rows; i++) {
-        for (int j = 0; j < image.cols; j++) {
-            for (int k = 0; k < 3; k++) {
-                int a = image.at<cv::Vec3b>(i, j)[k];
-                a += tuner[k];
-                if (a < 0) a = 0;
-                if (a > 255)a = 255;
-                image.at<cv::Vec3b>(i, j)[k] = a;
-            }
-        }
-    }
-}
-
 void get_frame() {
     cv::Mat _frame;
     camera >> _frame;
     camera >> pure_frame;
     flip_image(_frame);
-    filter_image(_frame);
+    tune(_frame);
     frame = _frame.clone();
 }
 
@@ -332,20 +322,8 @@ void execute_command(const std::string& str) {
     }
     else if (is_command("tune", str, pointer)) {
         std::vector<cv::Vec3b> get_color = get_color_calibrator(pure_frame);
-        int b = 0, g = 0, r = 0;
-        for (int i = 0; i < get_color.size(); i++) {
-            b += color_base[i].color[0] - get_color[i][0];
-            g += color_base[i].color[1] - get_color[i][1];
-            r += color_base[i].color[2] - get_color[i][2];
-            std::cout << color_base[i].color[0] - get_color[i][0] << " " << color_base[i].color[1] - get_color[i][1] << " " << color_base[i].color[2] - get_color[i][2] << std::endl;
-        }
-        b /= (int)get_color.size();
-        g /= (int)get_color.size();
-        r /= (int)get_color.size();
-        tuner[0] = b;
-        tuner[1] = g;
-        tuner[2] = r;
-        std::cout << b << ' ' << g << " " << r << std::endl;
+        init(color_base, get_color);
+        std::cout << "tune successfully\n";
     }
     else {
         std::cout << "unknown command\n";

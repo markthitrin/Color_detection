@@ -14,26 +14,9 @@ double gamma_mul_red = 255;
 double gamma_mul_green = 255;
 double gamma_mul_blue = 255;
 
-std::vector<LayerId> model = { { Layer::DENSE, 3, "act:linear dact:dlinear" } ,{ Layer::DENSE, 3 } };
-Neural_Network CCM(model,
-	[](const Matrix<double>& input, const Matrix<double>& target) {
-		double result = 0;
-		for (int i = 0; i < target.get_row(); i++) {
-			for (int j = 0; j < target.get_column(); j++) {
-				result += std::pow(target[i][j] - input[i][j], 2);
-			}
-		}
-		return result;
-	},
-	[](const Matrix<double>& input, const Matrix<double>& target) {
-		Matrix<double> result(target);
-		for (int i = 0; i < target.get_row(); i++) {
-			for (int j = 0; j < target.get_column(); j++) {
-				result[i][j] = 2 * (target[i][j] - input[i][j]);
-			}
-		}
-		return result;
-	});
+bool havetuned = false;
+
+Neural_Network CCM;
 
 void init(std::vector<indicator> color_base, std::vector<cv::Vec3b> src) {
 	double _src[24][3];
@@ -97,13 +80,16 @@ void init(std::vector<indicator> color_base, std::vector<cv::Vec3b> src) {
 		gamma_red += error_red;
 		gamma_green += error_green;
 		gamma_blue += error_blue;
-
-		gamma_mul_red += error_mul_red;
-		gamma_mul_green += error_mul_green;
-		gamma_mul_blue += error_mul_blue;
 	}
-	
-	for (int learning_time = 0; learning_time < 10000; learning_time++) {
+
+	for (int i = 0; i < 24; i++) {
+		_src[i][2] = std::pow(_src[i][2] / gamma_mul_red, gamma_red) * gamma_mul_red;
+		_src[i][1] = std::pow(_src[i][1] / gamma_mul_green, gamma_green)* gamma_mul_green;
+		_src[i][0] = std::pow(_src[i][0] / gamma_mul_blue, gamma_blue) * gamma_mul_blue;
+	}
+
+	std::ofstream output_ai("output_ai.txt");
+	for (int learning_time = 0; learning_time < 2000; learning_time++) {
 		auto to_Matrix = [](const double v[],int size) {
 			Matrix<double> result(size, 1);
 			for (int i = 0; i < result.get_row(); i++) {
@@ -111,15 +97,23 @@ void init(std::vector<indicator> color_base, std::vector<cv::Vec3b> src) {
 			}
 			return result;
 		};
-
+		double loss = 0;
+		
 		CCM.set_change_dependencies(0);
-		for (int i = 0; i < 24; i++) {;
+		for (int i = 0; i < 24; i++) {
 			CCM.feedforward(to_Matrix(_src[i], 3));
 			CCM.backpropagation(to_Matrix(_color_base[i], 3));
+			loss += CCM.get_loss(to_Matrix(_color_base[i], 3));
 		}
+		loss /= 24;
+		output_ai << loss << "\n";
+		CCM.set_all_drop_out_rate(3e-7 * loss / 20000);
 		CCM.change_dependencies();
 		CCM.forgot_all();
 	}
+
+
+	havetuned = true;
 }
 
 cv::Vec3b tune(cv::Vec3b color_base) {
@@ -145,11 +139,13 @@ cv::Vec3b tune(cv::Vec3b color_base) {
 		return result;
 	};
 
-	CCM.feedforward(to_Matrix({ blue,green,red }));
-	CCM.forgot_all();
-	blue = CCM.get_output()[0][0];
-	green = CCM.get_output()[0][0];
-	red = CCM.get_output()[0][0];
+	if (havetuned) {
+		CCM.feedforward(to_Matrix({ blue,green,red }));
+		CCM.forgot_all();
+		blue = CCM.get_output()[0][0];
+		green = CCM.get_output()[1][0];
+		red = CCM.get_output()[2][0];
+	}
 
 	if (blue > 255)
 		blue = 255;

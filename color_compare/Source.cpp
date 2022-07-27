@@ -17,6 +17,7 @@ bool show_camera_wait = true;
 bool show_color_capture_wait = true;
 bool show_color_detected_wait = true;
 
+extern Neural_Network CCM;
 
 std::vector<indicator> Ind;
 std::vector<indicator> color_base;
@@ -238,8 +239,8 @@ std::vector<cv::Vec3b> get_color_calibrator(cv::Mat& image) {
         for (int j = left + segment / 2; j < right; j += segment) {
             double get_color[3] = { 0,0,0 };
             int pixel_count = 0;
-            for (int k = i - 10; k <= i + 10; k++) {
-                for (int w = j - 10; w <= j + 10; w++) {
+            for (int k = i - 20; k <= i + 20; k++) {
+                for (int w = j - 20; w <= j + 20; w++) {
                     get_color[0] += image.at<cv::Vec3b>(k, w)[0];
                     get_color[1] += image.at<cv::Vec3b>(k, w)[1];
                     get_color[2] += image.at<cv::Vec3b>(k, w)[2];
@@ -391,19 +392,36 @@ void show_color_detected() {
             continue;
 
         cv::cvtColor(color_frame, color_frame, cv::COLOR_BGR2Lab);
-        for (int i = 0; i < color_frame.rows; i+=2) {
-            for (int j = 0; j < color_frame.cols; j+=2) {
+        for (int i = 0; i < color_frame.rows; i+=5) {
+            for (int j = 0; j < color_frame.cols; j+=5) {
                 double min = 100000000;
                 cv::Vec3b min_color;
+                cv::Vec3b color_mean = { 0,0,0 };
+                int count0 = 0;
+                double a = 0, b = 0, c = 0;
+                for (int k = 0; k < 5; k++)
+                    for (int w = 0; w < 5; w++) {
+                        a += color_frame.at<cv::Vec3b>(i + k, j + w)[0];
+                        b += color_frame.at<cv::Vec3b>(i + k, j + w)[1];
+                        c += color_frame.at<cv::Vec3b>(i + k, j + w)[2];
+                        count0++;
+                    }
+                a /= count0;
+                b /= count0;
+                c /= count0;
+                color_mean[0] = a;
+                color_mean[1] = b;
+                color_mean[2] = c;
+
                 for (int k = 0; k < Ind.size(); k++) {
-                    double distance = get_distance(Ind[k].color, color_frame.at<cv::Vec3b>(i, j));
+                    double distance = get_distance(Ind[k].color, color_mean);
                     if (distance < min) {
                         min = distance;
                         min_color = Ind[k].color;
                     }
                 }
-                for (int k = 0; k < 2; k++) 
-                    for(int w = 0; w < 2; w++)
+                for (int k = 0; k < 5; k++) 
+                    for(int w = 0; w < 5; w++)
                         color_frame.at<cv::Vec3b>(i + k, j + w) = min_color;
             }
         }
@@ -424,6 +442,30 @@ int main(int, char**) {
     cv::namedWindow("Webcam", 1080);
     cv::namedWindow("Color_captured", 1080);
     cv::namedWindow("Color close", 1080);
+
+    std::vector<LayerId> model = { { Layer::DENSE, 3, "act:linear dact:dlinear" } ,{ Layer::DENSE, 3 } };
+    CCM.reconstruct(model,
+        [](const Matrix<double>& input, const Matrix<double>& target) {
+            double result = 0;
+            for (int i = 0; i < target.get_row(); i++) {
+                for (int j = 0; j < target.get_column(); j++) {
+                    result += std::pow(target[i][j] - input[i][j], 2);
+                }
+            }
+            return result;
+        },
+        [](const Matrix<double>& input, const Matrix<double>& target) {
+            Matrix<double> result(target);
+            for (int i = 0; i < target.get_row(); i++) {
+                for (int j = 0; j < target.get_column(); j++) {
+                    result[i][j] = 2 * (target[i][j] - input[i][j]);
+                }
+            }
+            return result;
+        });
+    CCM.rand_weight({ {0.25,0.35} });
+    CCM.rand_bias({ {0.0,0.0} });
+    CCM.set_all_learning_rate(3e-7);
 
     std::thread get_command_thread(get_command);
     std::thread show1(show_camera);

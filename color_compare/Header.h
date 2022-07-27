@@ -8,5 +8,5 @@
 #include <string>
 #include <atomic>
 
-#include <Neural_Network/Neural_Network.h>
-#include <Neural_Network/Viariable.h>
+#include <Neural_Network.h>
+#include <Viariable.h>

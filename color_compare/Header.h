@@ -7,6 +7,9 @@
 #include <chrono>
 #include <string>
 #include <atomic>
+#include <functional>
 
-#include <Neural_Network.h>
-#include <Viariable.h>
+#include <Neural_Network\Neural_Network.h>
+#include <Neural_Network\Viariable.h>
+
+#define PI 3.14159265358979323846

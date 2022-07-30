@@ -18,7 +18,13 @@
     <ClCompile Include="Source.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="linearzation.cpp">
+    <ClCompile Include="linearzation_Function.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Variable.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Function.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -33,6 +39,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="Variable.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="linearzation_Function.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

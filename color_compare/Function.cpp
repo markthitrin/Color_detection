@@ -218,6 +218,7 @@ std::vector<cv::Vec3b> get_color_calibrator(cv::Mat& image) {
     int bottom = midy - edge_size / 2;
 
     int segment = edge_size / 4;
+    cv::cvtColor(image, image, cv::COLOR_BGR2Lab);
     for (int i = bottom + segment / 2; i < top; i += segment) {
         for (int j = left + segment / 2; j < right; j += segment) {
             double get_color[3] = { 0,0,0 };
@@ -237,6 +238,7 @@ std::vector<cv::Vec3b> get_color_calibrator(cv::Mat& image) {
             result.push_back(return_color);
         }
     }
+    cv::cvtColor(image, image, cv::COLOR_Lab2BGR);
     return result;
 }
 

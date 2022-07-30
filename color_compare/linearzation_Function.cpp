@@ -316,9 +316,11 @@ cv::Vec3b tune(cv::Vec3b color_base) {
 }
 
 void tune(cv::Mat& frame) {
+	cv::cvtColor(frame, frame, cv::COLOR_BGR2Lab);
 	for (int i = 0; i < frame.rows; i++) {
 		for (int j = 0; j < frame.cols; j++) {
 			frame.at<cv::Vec3b>(i,j) = tune(frame.at<cv::Vec3b>(i, j));
 		}
 	}
+	cv::cvtColor(frame, frame, cv::COLOR_Lab2BGR);
 }

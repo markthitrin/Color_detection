@@ -316,9 +316,21 @@ cv::Vec3b tune(cv::Vec3b color_base) {
 }
 
 void tune(cv::Mat& frame) {
+	const int row = frame.rows;
+	const int col = frame.cols;
+
+	int midx = col / 2;
+	int midy = row / 2;
+	int edge_size = ((row + col) / 2) / 6;
+
+	int left = midx - edge_size / 2;
+	int right = midx + edge_size / 2;
+	int top = midy + edge_size / 2;
+	int bottom = midy - edge_size / 2;
+
 	cv::cvtColor(frame, frame, cv::COLOR_BGR2Lab);
-	for (int i = 0; i < frame.rows; i++) {
-		for (int j = 0; j < frame.cols; j++) {
+	for (int i = bottom; i < top; i++) {
+		for (int j = left; j < right; j++) {
 			frame.at<cv::Vec3b>(i,j) = tune(frame.at<cv::Vec3b>(i, j));
 		}
 	}

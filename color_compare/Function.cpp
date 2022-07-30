@@ -2,6 +2,7 @@
 #include "Variable.h"
 #include "indicator.h"
 #include "linearzation_Function.h"
+#include "get_color.h"
 
 void load_indicator(const std::string& input_file_name, std::vector<indicator>& Ind) {
     std::ifstream input_file(input_file_name);
@@ -187,7 +188,7 @@ void draw_capture_box(cv::Mat& image) {
 
     int midx = col / 2;
     int midy = row / 2;
-    int edge_size = ((row + col) / 2) / 4;
+    int edge_size = ((row + col) / 2) / 6;
 
     int left = midx - edge_size / 2;
     int right = midx + edge_size / 2;
@@ -242,13 +243,14 @@ std::vector<cv::Vec3b> get_color_calibrator(cv::Mat& image) {
     return result;
 }
 
-cv::Vec3b get_color_capture_box(cv::Mat& image) {
+cv::Vec3b get_color_capture_box(cv::Mat& _image) {
+    cv::Mat image = _image.clone();
     const int row = image.rows;
     const int col = image.cols;
 
     int midx = col / 2;
     int midy = row / 2;
-    int edge_size = ((row + col) / 2) / 4;
+    int edge_size = ((row + col) / 2) / 6;
 
     int left = midx - edge_size / 2;
     int right = midx + edge_size / 2;
@@ -257,18 +259,9 @@ cv::Vec3b get_color_capture_box(cv::Mat& image) {
 
     double get_color[3] = { 0,0,0 };
     int pixel_count = 0;
-    for (int q = left; q <= right; q++) {
-        for (int w = bottom; w <= top; w++) {
-            get_color[0] += image.at<cv::Vec3b>(q, w)[0];
-            get_color[1] += image.at<cv::Vec3b>(q, w)[1];
-            get_color[2] += image.at<cv::Vec3b>(q, w)[2];
-            ++pixel_count;
-        }
-    }
-    cv::Vec3b return_color;
-    return_color[0] = get_color[0] / pixel_count;
-    return_color[1] = get_color[1] / pixel_count;
-    return_color[2] = get_color[2] / pixel_count;
+    
+    cv::Vec3b return_color = get_squremean_color(image,left,right,bottom,top);
+
     return return_color;
 }
 
@@ -352,12 +345,14 @@ void show_capture_color() {
 
         if (output_color.rows == 0)
             continue;
+        cv::cvtColor(output_color, output_color, cv::COLOR_BGR2Lab);
         cv::Vec3b get_color = get_color_capture_box(output_color);
         for (int i = 0; i < output_color.rows; i++) {
             for (int j = 0; j < output_color.cols; j++) {
                 output_color.at<cv::Vec3b>(i, j) = get_color;
             }
         }
+        cv::cvtColor(output_color, output_color, cv::COLOR_Lab2BGR);
         while (!show_color_capture_wait) {
 
         }
